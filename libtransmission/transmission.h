@@ -126,11 +126,11 @@ const char* tr_getDefaultConfigDir (const char * appname);
 const char* tr_getDefaultDownloadDir (void);
 
 
-#define TR_DEFAULT_BIND_ADDRESS_IPV4        "0.0.0.0"
-#define TR_DEFAULT_BIND_ADDRESS_IPV6             "::"
+#define TR_DEFAULT_BIND_ADDRESS_IPV4        "127.0.0.1"
+#define TR_DEFAULT_BIND_ADDRESS_IPV6             "::1"
 #define TR_DEFAULT_RPC_WHITELIST          "127.0.0.1"
 #define TR_DEFAULT_RPC_PORT_STR                "9091"
-#define TR_DEFAULT_RPC_URL_STR       "/transmission/"
+#define TR_DEFAULT_RPC_URL_STR              "/"
 #define TR_DEFAULT_PEER_PORT_STR              "51413"
 #define TR_DEFAULT_PEER_SOCKET_TOS_STR      "default"
 #define TR_DEFAULT_PEER_LIMIT_GLOBAL_STR        "200"
@@ -364,7 +364,7 @@ tr_port tr_sessionGetRPCPort (const tr_session * session);
  * @brief Specify which base URL to use.
  *
  * @param session the session to set
- * @param url     the base url to use. The RPC API is accessible under <url>/rpc, the web interface under * <url>/web.
+ * @param url     the base url to use. The RPC API is accessible under <url>/rpc, the web interface under * <url>/.
  *
  *  @see tr_sessionGetRPCUrl
  */

@@ -13,7 +13,7 @@ var RPC = {
     _QueueMoveBottom: 'queue-move-bottom',
     _QueueMoveUp: 'queue-move-up',
     _QueueMoveDown: 'queue-move-down',
-    _Root: '../rpc',
+    _Root: 'rpc',
     _TurtleDownSpeedLimit: 'alt-speed-down',
     _TurtleState: 'alt-speed-enabled',
     _TurtleUpSpeedLimit: 'alt-speed-up',

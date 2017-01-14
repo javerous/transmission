@@ -835,7 +835,7 @@ Transmission.prototype = {
 
     refreshTorrents: function () {
         var callback = $.proxy(this.refreshTorrents, this);
-        var msec = this[Prefs._RefreshRate] * 1000;
+        var msec = this[Prefs._RefreshRate];
         var fields = ['id'].concat(Torrent.Fields.Stats);
 
         // send a request right now

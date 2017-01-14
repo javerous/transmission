@@ -458,7 +458,7 @@ handle_web_client (struct evhttp_request * req,
       char * pch;
       char * subpath;
 
-      subpath = tr_strdup (req->uri + strlen (server->url) + 4);
+      subpath = tr_strdup (req->uri + strlen (server->url));
       if ((pch = strchr (subpath, '?')))
         *pch = '\0';
 
@@ -578,98 +578,117 @@ handle_request (struct evhttp_request * req, void * arg)
 {
   struct tr_rpc_server * server = arg;
 
-  if (req && req->evcon)
+    if (!req || req->evcon == NULL)
+        return;
+        
+    // Handle authentication.
+    if (server->isPasswordEnabled)
     {
-      const char * auth;
-      char * user = NULL;
-      char * pass = NULL;
-
-      evhttp_add_header (req->output_headers, "Server", MY_REALM);
-
-      auth = evhttp_find_header (req->input_headers, "Authorization");
-      if (auth && !evutil_ascii_strncasecmp (auth, "basic ", 6))
+        // > Parse authentication.
+        const char * auth;
+        char * user = NULL;
+        char * pass = NULL;
+        
+        evhttp_add_header (req->output_headers, "Server", MY_REALM);
+        
+        auth = evhttp_find_header (req->input_headers, "Authorization");
+        if (auth && !evutil_ascii_strncasecmp (auth, "basic ", 6))
         {
-          size_t plen;
-          char * p = tr_base64_decode_str (auth + 6, &plen);
-          if (p != NULL)
+            size_t plen;
+            char * p = tr_base64_decode_str (auth + 6, &plen);
+            if (p != NULL)
             {
-              if (plen > 0 && (pass = strchr (p, ':')) != NULL)
+                if (plen > 0 && (pass = strchr (p, ':')) != NULL)
                 {
-                  user = p;
-                  *pass++ = '\0';
+                    user = p;
+                    *pass++ = '\0';
                 }
-              else
+                else
                 {
-                  tr_free (p);
+                    tr_free (p);
                 }
             }
         }
+        
+        // Check authentication.
+        if (pass == NULL || user == NULL || strcmp (server->username, user) != 0
+            || !tr_ssha1_matches (server->password,
+                                  pass))
+        {
+            evhttp_add_header (req->output_headers,
+                               "WWW-Authenticate",
+                               "Basic realm=\"" MY_REALM "\"");
+            
+            send_simple_response (req, 401, "Unauthorized User");
+            tr_free (user);
+            return;
+        }
+        
+        tr_free (user);
+    }
 
-      if (!isAddressAllowed (server, req->remote_host))
-        {
-          send_simple_response (req, 403,
-            "<p>Unauthorized IP Address.</p>"
-            "<p>Either disable the IP address whitelist or add your address to it.</p>"
-            "<p>If you're editing settings.json, see the 'rpc-whitelist' and 'rpc-whitelist-enabled' entries.</p>"
-            "<p>If you're still using ACLs, use a whitelist instead. See the transmission-daemon manpage for details.</p>");
-        }
-      else if (server->isPasswordEnabled
-                 && (pass == NULL || user == NULL || strcmp (server->username, user) != 0
-                                     || !tr_ssha1_matches (server->password,
-                                                           pass)))
-        {
-          evhttp_add_header (req->output_headers,
-                             "WWW-Authenticate",
-                             "Basic realm=\"" MY_REALM "\"");
-          send_simple_response (req, 401, "Unauthorized User");
-        }
-      else if (strncmp (req->uri, server->url, strlen (server->url)) != 0)
-        {
-          char * location = tr_strdup_printf ("%sweb/", server->url);
-          evhttp_add_header (req->output_headers, "Location", location);
-          send_simple_response (req, HTTP_MOVEPERM, NULL);
-          tr_free (location);
-        }
-      else if (strncmp (req->uri + strlen (server->url), "web/", 4) == 0)
-        {
-          handle_web_client (req, server);
-        }
-      else if (strcmp (req->uri + strlen (server->url), "upload") == 0)
-        {
-          handle_upload (req, server);
-        }
+    // Check remote IP.
+    if (!isAddressAllowed (server, req->remote_host))
+    {
+        send_simple_response (req, 403,
+                              "<p>Unauthorized IP Address.</p>"
+                              "<p>Either disable the IP address whitelist or add your address to it.</p>"
+                              "<p>If you're editing settings.json, see the 'rpc-whitelist' and 'rpc-whitelist-enabled' entries.</p>"
+                              "<p>If you're still using ACLs, use a whitelist instead. See the transmission-daemon manpage for details.</p>");
+        return;
+    }
+
+    
+    // Redirect to right address.
+    if (strncmp (req->uri, server->url, strlen (server->url)) != 0)
+    {
+        char * location = tr_strdup_printf ("%s", server->url);
+        evhttp_add_header (req->output_headers, "Location", location);
+        send_simple_response (req, HTTP_MOVEPERM, NULL);
+        tr_free (location);
+        return;
+    }
+    
+    // Handle upload.
+    if (strcmp (req->uri + strlen (server->url), "upload") == 0)
+    {
+        handle_upload (req, server);
+        return;
+    }
+    
+    // Handle rpc.
+    if (strncmp (req->uri + strlen (server->url), "rpc", 3) == 0)
+    {
 #ifdef REQUIRE_SESSION_ID
-      else if (!test_session_id (server, req))
+        if (!test_session_id (server, req))
         {
-          const char * sessionId = get_current_session_id (server);
-          char * tmp = tr_strdup_printf (
-            "<p>Your request had an invalid session-id header.</p>"
-            "<p>To fix this, follow these steps:"
-            "<ol><li> When reading a response, get its X-Transmission-Session-Id header and remember it"
-            "<li> Add the updated header to your outgoing requests"
-            "<li> When you get this 409 error message, resend your request with the updated header"
-            "</ol></p>"
-            "<p>This requirement has been added to help prevent "
-            "<a href=\"http://en.wikipedia.org/wiki/Cross-site_request_forgery\">CSRF</a> "
-            "attacks.</p>"
-            "<p><code>%s: %s</code></p>",
-            TR_RPC_SESSION_ID_HEADER, sessionId);
-          evhttp_add_header (req->output_headers, TR_RPC_SESSION_ID_HEADER, sessionId);
-          send_simple_response (req, 409, tmp);
-          tr_free (tmp);
+            const char * sessionId = get_current_session_id (server);
+            char * tmp = tr_strdup_printf (
+                                           "<p>Your request had an invalid session-id header.</p>"
+                                           "<p>To fix this, follow these steps:"
+                                           "<ol><li> When reading a response, get its X-Transmission-Session-Id header and remember it"
+                                           "<li> Add the updated header to your outgoing requests"
+                                           "<li> When you get this 409 error message, resend your request with the updated header"
+                                           "</ol></p>"
+                                           "<p>This requirement has been added to help prevent "
+                                           "<a href=\"http://en.wikipedia.org/wiki/Cross-site_request_forgery\">CSRF</a> "
+                                           "attacks.</p>"
+                                           "<p><code>%s: %s</code></p>",
+                                           TR_RPC_SESSION_ID_HEADER, sessionId);
+            
+            evhttp_add_header (req->output_headers, TR_RPC_SESSION_ID_HEADER, sessionId);
+            send_simple_response (req, 409, tmp);
+            tr_free (tmp);
+            return;
         }
 #endif
-      else if (strncmp (req->uri + strlen (server->url), "rpc", 3) == 0)
-        {
-          handle_rpc (req, server);
-        }
-      else
-        {
-          send_simple_response (req, HTTP_NOTFOUND, req->uri);
-        }
-
-      tr_free (user);
+        
+        handle_rpc (req, server);
+        return;
     }
+    
+    // Fallback to web content.
+    handle_web_client (req, server);
 }
 
 enum

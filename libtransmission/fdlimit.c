@@ -14,6 +14,7 @@
 #ifndef _WIN32
  #include <sys/time.h> /* getrlimit */
  #include <sys/resource.h> /* getrlimit */
+ #include <sys/syslimits.h>
 #endif
 
 #include "transmission.h"
@@ -370,12 +371,12 @@ ensureSessionFdInfoExists (tr_session * session)
       session->fdInfo = i;
 
 #ifndef _WIN32
-      /* set the open-file limit to the largest safe size wrt FD_SETSIZE */
+      /* set the open-file limit to the largest safe size wrt (rlim_t)OPEN_MAX */
       struct rlimit limit;
       if (!getrlimit (RLIMIT_NOFILE, &limit))
         {
           const int old_limit = (int) limit.rlim_cur;
-          const int new_limit = MIN (limit.rlim_max, FD_SETSIZE);
+          const int new_limit = MIN (limit.rlim_max, (rlim_t)OPEN_MAX);
           if (new_limit != old_limit)
             {
               limit.rlim_cur = new_limit;
